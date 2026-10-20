@@ -151,43 +151,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleToggleHiddenFiles() {
-        // 1. Read current Finder defaults state
+        // Run native AppleScript to trigger Finder shortcut Cmd+Shift+. smoothly without quitting Finder
+        let script = """
+        tell application "Finder" to activate
+        tell application "System Events"
+            key code 47 using {command down, shift down}
+        end tell
+        """
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        process.arguments = ["read", "com.apple.Finder", "AppleShowAllFiles"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
         try? process.run()
         process.waitUntilExit()
-
-        let currentStr = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "0"
-        let isCurrentlyShown = (currentStr == "true" || currentStr == "yes" || currentStr == "1")
-        let newValue = isCurrentlyShown ? "false" : "true"
-
-        // 2. Persist new state to Finder preferences
-        let writeProcess = Process()
-        writeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        writeProcess.arguments = ["write", "com.apple.Finder", "AppleShowAllFiles", "-bool", newValue]
-        try? writeProcess.run()
-        writeProcess.waitUntilExit()
-
-        // 3. Post Cmd+Shift+. via CGEvent to trigger native live toggle without restarting Finder
-        let keyCode: CGKeyCode = 47 // '.' key on ANSI keyboards
-        let flags: CGEventFlags = [.maskCommand, .maskShift]
-        let src = CGEventSource(stateID: .combinedSessionState)
-
-        if let down = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true) {
-            down.flags = flags
-            down.post(tap: .cgSessionEventTap)
-            down.post(tap: .cghidEventTap)
-        }
-        usleep(20000)
-        if let up = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: false) {
-            up.flags = flags
-            up.post(tap: .cgSessionEventTap)
-            up.post(tap: .cghidEventTap)
-        }
     }
 
     private func showStatusWindow() {

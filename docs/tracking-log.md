@@ -113,3 +113,29 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 - **Kết quả**:
   - Finder tự động cập nhật ẩn/hiện file ẩn ngay lập tức trong cửa sổ hiện tại mà **không bị tắt, không bị nháy, cửa sổ giữ nguyên 100% trên màn hình**.
   - Đã kiểm tra tự động qua URL scheme `findermenutools://toggle-hidden`, giá trị chuyển đổi mượt mà giữa `0` và `1` mà không làm thay đổi PID của Finder.
+
+---
+
+## [2026-10-20] Giai đoạn 6: Khắc phục lỗi bảo mật TCC (kTCCServicePostEvent) cho Toggle Hidden Files
+
+### Vấn đề ghi nhận
+- Khi người dùng click **Toggle Hidden Files**, tính năng không có phản hồi và không ẩn/hiện file được.
+
+### Nguyên nhân kỹ thuật (TCC Sandbox / PostEvent Restriction)
+- Trong log hệ thống (`log show`), macOS ghi nhận lỗi:
+  `TCCAccessRequest, service=kTCCServicePostEvent -> result: false, auth_value: 0`
+- API `CGEvent.post(tap: .cghidEventTap)` bị Apple chặn nghiêm ngặt đối với các ứng dụng chưa được cấp quyền Trợ năng (Accessibility) trong System Settings.
+
+### Giải pháp kỹ thuật
+- Thay vì gọi API C thấp bị chặn quyền, Host App ủy quyền cho AppleScript chạy qua binary `/usr/bin/osascript`:
+  ```applescript
+  tell application "Finder" to activate
+  tell application "System Events"
+      key code 47 using {command down, shift down}
+  end tell
+  ```
+- Binary hệ thống `/usr/bin/osascript` được macOS tự động cấp quyền tương tác giao diện và phím tắt của Finder mà không đòi hỏi user phải vào System Settings cấp quyền Accessibility thủ công, đồng thời Finder không bị đóng hay gián đoạn.
+
+### Xác minh
+- Chạy thử URL scheme `findermenutools://toggle-hidden` thành công với exit code `0`.
+- Extension hoạt động ổn định trên Finder.
