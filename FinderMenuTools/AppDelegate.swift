@@ -151,18 +151,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleToggleHiddenFiles() {
-        // Run native AppleScript to trigger Finder shortcut Cmd+Shift+. smoothly without quitting Finder
+        // 1. Read & toggle persistent Finder preference (using exact lowercase 'com.apple.finder')
+        let readProcess = Process()
+        readProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        readProcess.arguments = ["read", "com.apple.finder", "AppleShowAllFiles"]
+        let pipe = Pipe()
+        readProcess.standardOutput = pipe
+        try? readProcess.run()
+        readProcess.waitUntilExit()
+
+        let currentStr = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "0"
+        let isCurrentlyShown = (currentStr == "true" || currentStr == "yes" || currentStr == "1")
+        let newValue = isCurrentlyShown ? "false" : "true"
+
+        let writeProcess = Process()
+        writeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        writeProcess.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", newValue]
+        try? writeProcess.run()
+        writeProcess.waitUntilExit()
+
+        // 2. Activate Finder and send native keystroke Cmd+Shift+. via AppleScript
         let script = """
         tell application "Finder" to activate
+        delay 0.05
         tell application "System Events"
-            key code 47 using {command down, shift down}
+            keystroke "." using {command down, shift down}
         end tell
         """
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        try? process.run()
-        process.waitUntilExit()
+        let osascript = Process()
+        osascript.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        osascript.arguments = ["-e", script]
+        try? osascript.run()
+        osascript.waitUntilExit()
+
+        // 3. Post targeted CGEvent directly to Finder's PID as fallback
+        if let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) {
+            let pid = finder.processIdentifier
+            let src = CGEventSource(stateID: .combinedSessionState)
+            if let down = CGEvent(keyboardEventSource: src, virtualKey: 47, keyDown: true) {
+                down.flags = [.maskCommand, .maskShift]
+                down.postToPid(pid)
+            }
+            usleep(20000)
+            if let up = CGEvent(keyboardEventSource: src, virtualKey: 47, keyDown: false) {
+                up.flags = [.maskCommand, .maskShift]
+                up.postToPid(pid)
+            }
+        }
     }
 
     private func showStatusWindow() {

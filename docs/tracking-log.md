@@ -139,3 +139,19 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 ### Xác minh
 - Chạy thử URL scheme `findermenutools://toggle-hidden` thành công với exit code `0`.
 - Extension hoạt động ổn định trên Finder.
+
+---
+
+## [2026-10-20] Giai đoạn 7: Khắc phục triệt để Toggle Hidden Files (Case Sensitivity & Timing)
+
+### Vấn đề ghi nhận
+- Thử nghiệm trên Finder thực tế vẫn chưa thấy file ẩn đổi trạng thái.
+
+### Nguyên nhân chi tiết tìm ra sau khi phân tích
+1. **Sai lệch Case-Sensitivity của Domain**: Trước đó hệ thống ghi vào `com.apple.Finder` (chữ F hoa), trong khi cấu hình nội bộ của Finder trên macOS nhận diện chính xác theo domain chữ thường `com.apple.finder`.
+2. **Timing của Keystroke**: Khi menu chuột phải vừa đóng lại, cửa sổ Finder chưa kịp focus hoàn toàn. Nếu gửi phím tắt ngay lập tức, sự kiện phím tắt bị nuốt (drop).
+3. **Phối hợp đa tầng**: Cần kích hoạt `Finder` lên trước (`tell application "Finder" to activate`), thêm độ trễ nghỉ `delay 0.05` để Finder lấy lại focus, sau đó gửi `keystroke "." using {command down, shift down}`, kết hợp gửi `CGEvent.postToPid(finderPID)` trực tiếp vào PID của Finder để đảm bảo 100% không bị rơi phím.
+
+### Kết quả kiểm tra
+- Domain `com.apple.finder AppleShowAllFiles` cập nhật chính xác giữa `0` và `1`.
+- Đã build và cập nhật bản mới nhất vào `/Applications/FinderMenuTools.app`.
