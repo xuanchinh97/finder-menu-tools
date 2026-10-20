@@ -1,10 +1,15 @@
 # Kiến trúc hệ thống (Architecture)
 
 ## 1. Tổng quan
-`FinderMenuTools` là công cụ native trên macOS cung cấp thêm các tuỳ chọn tiện ích giống Windows ngay ở cấp 1 của menu chuột phải (Context Menu) trong Finder:
-1. **Copy Path**: Sao chép đường dẫn tuyệt đối (POSIX path) của Folder/File đang chọn vào Clipboard.
-2. **Open in iTerm2**: Mở nhanh cửa sổ/tab `iTerm2` tại đúng đường dẫn của Folder đang chọn (hoặc thư mục cha nếu click vào File).
-3. **Open in Terminal**: Mở nhanh ứng dụng `Terminal` mặc định của macOS tại đúng đường dẫn được chọn.
+`FinderMenuTools` là bộ tiện ích native hoàn chỉnh trên macOS cung cấp các tính năng tương đương và vượt trội Windows Context Menu ngay ở cấp 1 của menu chuột phải trong Finder:
+1. **Copy Path**: Sao chép đường dẫn tuyệt đối (POSIX path) của Folder/File đang chọn.
+2. **Copy Name**: Sao chép tên file/thư mục (kèm extension nếu có).
+3. **Open in Terminal**: Mở nhanh thư mục được chọn trong Terminal mặc định của macOS.
+4. **Open in iTerm2**: Tự động nhận diện và mở trong iTerm2 (chỉ hiển thị nếu máy có cài đặt iTerm2).
+5. **Open in VS Code**: Tự động nhận diện và mở trong Visual Studio Code (chỉ hiển thị nếu máy có cài đặt VS Code).
+6. **New File Here...**: Mở popup nhỏ cho phép nhập tên và tạo file trống (`untitled.txt`, `.md`,...) ngay tại thư mục hiện tại (tương tự `New > Text Document` trên Windows).
+7. **Toggle Hidden Files**: Chuyển đổi trạng thái hiển thị file ẩn `.` trong Finder chỉ với 1 click.
+8. **Settings UI**: Giao diện trực quan trong `FinderMenuTools.app` cho phép người dùng tick bật/tắt từng tính năng theo nhu cầu cá nhân.
 
 ## 2. Thành phần kiến trúc
 

@@ -70,3 +70,28 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 - [x] Đã gửi URL test `findermenutools://open?app=iterm&path=/Users/trinhxuanchinh/Workspace/tools`: iTerm2 nhận lệnh và mở tab mới trỏ vào đúng thư mục.
 - [x] Extension đăng ký hợp lệ: `pluginkit -m -v -p com.apple.FinderSync` báo `+ com.chinh.FinderMenuTools.FinderSyncExt`.
 - [x] Tiến trình `FinderSyncExt` đang hoạt động ổn định trên Finder.
+
+---
+
+## [2026-10-20] Giai đoạn 4: Nâng cấp Toàn diện (v1.1.0) - Đầy đủ tính năng như Windows + Dev Tools
+
+### Mục tiêu
+- Triển khai toàn bộ các tính năng đề xuất:
+  1. **Open in VS Code** (nhận diện tự động).
+  2. **Copy Name** (bên cạnh Copy Path).
+  3. **New File Here...** (tạo file trống với popup nhập tên).
+  4. **Toggle Hidden Files** (chuyển đổi ẩn/hiện file ẩn Finder).
+  5. **Smart App Detection** (chỉ hiện iTerm2/VS Code nếu máy có cài).
+  6. **Giao diện Cài đặt (Settings UI)** cho phép bật/tắt từng tính năng qua `UserDefaults`.
+
+### Triển khai & Xác minh
+- **Host App (`AppDelegate.swift`)**:
+  - Bổ sung các checkbox cấu hình trong cửa sổ cài đặt.
+  - Xử lý các scheme: `findermenutools://open?app=vscode`, `findermenutools://newfile`, `findermenutools://toggle-hidden`.
+- **Extension (`FinderSync.swift`)**:
+  - Đọc cấu hình từ `UserDefaults` và chỉ hiển thị các mục người dùng đã bật.
+  - Tự động kiểm tra file cài đặt để hiển thị hoặc ẩn iTerm2 / VS Code.
+- **Kết quả kiểm thử**:
+  - Lệnh mở VS Code qua URL scheme hoạt động chính xác (`Visual Studio Code` nhận diện folder dự án ngay lập tức).
+  - Bản build Release đã được ký và cài đặt thành công vào `/Applications/FinderMenuTools.app`.
+  - Extension `com.chinh.FinderMenuTools.FinderSyncExt` đang hoạt động trên PID `4047`.

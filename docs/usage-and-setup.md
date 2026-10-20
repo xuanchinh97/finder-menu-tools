@@ -1,11 +1,25 @@
 # Hướng dẫn Cài đặt & Sử dụng (Usage & Setup)
 
-## 1. Yêu cầu hệ thống
-- macOS 14.0+ (Apple Silicon / Intel)
-- Xcode / Command Line Tools (Swift 6+)
-- [iTerm2](https://iterm2.com/) được cài đặt tại `/Applications/iTerm.app` (hoặc fallback về `Terminal.app` nếu máy chưa cài iTerm2).
+## 1. Yêu cầu hệ thống & Tính năng hỗ trợ
+- macOS 14.0+ (Apple Silicon / Intel).
+- Tự động nhận diện các phần mềm có sẵn trên máy:
+  - **Terminal**: Tích hợp sẵn trong macOS.
+  - **iTerm2**: Nhận diện tại `/Applications/iTerm.app`.
+  - **Visual Studio Code**: Nhận diện tại `/Applications/Visual Studio Code.app`.
 
-## 2. Build & Cài đặt tự động
+## 2. Danh sách tính năng trên Context Menu
+- **Copy Path**: Copy đường dẫn tuyệt đối (nhiều file/folder sẽ nối bằng `\n`).
+- **Copy Name**: Copy riêng tên file/folder (kèm đuôi mở rộng).
+- **Open in Terminal**: Mở Terminal tại đường dẫn đang chọn.
+- **Open in iTerm2**: Mở iTerm2 tại đường dẫn đang chọn.
+- **Open in VS Code**: Mở VS Code tại thư mục dự án đang chọn.
+- **New File Here...**: Mở popup để nhập tên file mới và tạo file trống ngay tại folder đó.
+- **Toggle Hidden Files**: Bật/tắt chế độ hiển thị file ẩn trong Finder.
+
+## 3. Tùy biến bật/tắt tính năng (Preferences)
+- Mở ứng dụng `/Applications/FinderMenuTools.app`.
+- Bạn có thể tick chọn hoặc bỏ tick bất kỳ tính năng nào không dùng đến.
+- Nhấn **Refresh Finder** để cập nhật lại menu ngay lập tức.
 Chạy script cài đặt tự động tại thư mục gốc của dự án:
 
 ```bash
