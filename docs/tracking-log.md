@@ -22,3 +22,23 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 - Triển khai mã nguồn `FinderMenuTools` (Host App) và `FinderSyncExt` (Finder Sync Extension).
 - Tạo cấu hình Xcode project và script `scripts/install.sh`.
 - Build, cài đặt vào `/Applications` và kiểm thử thực tế.
+
+---
+
+## [2026-10-20] Giai đoạn 2: Xây dựng mã nguồn, Build, Cài đặt & Kích hoạt Finder Sync Extension
+
+### Mục tiêu
+- Viết mã nguồn Host App (`FinderMenuTools`) và Extension (`FinderSyncExt`).
+- Cấu hình Xcode Project (`FinderMenuTools.xcodeproj`) và script cài đặt tự động `scripts/install.sh`.
+- Biên dịch bản Release, cài đặt vào `/Applications/FinderMenuTools.app` và kích hoạt trên Finder.
+
+### Phát hiện kỹ thuật & Giải pháp (Root Cause & Fix)
+- **Vấn đề**: Khi đặt `com.apple.security.app-sandbox = false` cho `FinderSyncExt.appex` (hoặc dùng `codesign --deep` trên Host App làm ghi đè entitlements của Extension), daemon `pkd` (`pluginkit`) của macOS từ chối đăng ký extension (trả về `(no matches)`).
+- **Giải pháp**:
+  1. Bật `com.apple.security.app-sandbox = true` kèm `com.apple.security.temporary-exception.files.all.read-write = true` trong `FinderSyncExt/FinderSyncExt.entitlements`.
+  2. Trong `scripts/install.sh`, ký riêng `FinderSyncExt.appex` trước, sau đó ký `FinderMenuTools.app` không dùng `--deep`.
+- **Kết quả xác minh (`diagnose.sh` & `pluginkit`)**:
+  - `xcodebuild` biên dịch thành công (`Universal binary: x86_64 + arm64`).
+  - `pluginkit -m -v -i com.chinh.FinderMenuTools.FinderSyncExt` trả về trạng thái `+` (Active):
+    `+ com.chinh.FinderMenuTools.FinderSyncExt(1.0.0) /Applications/FinderMenuTools.app/Contents/PlugIns/FinderSyncExt.appex`
+  - Tiến trình `FinderSyncExt` đã được Finder khởi chạy thành công.

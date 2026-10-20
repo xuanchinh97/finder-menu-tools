@@ -41,4 +41,8 @@ flowchart LR
   - Fallback về `targetedURL()` nếu người dùng click chuột phải vào khoảng trống trong cửa sổ Finder.
 
 ## 3. Bảo mật, Entitlements & Code Signing
-- Để extension có thể theo dõi toàn bộ cây thư mục gốc `/` và gọi mở ứng dụng bên ngoài (`iTerm.app`) mà không bị chặn bởi Sandbox của macOS, cả hai target sử dụng cấu hình `com.apple.security.app-sandbox = false` với chữ ký Ad-hoc (`CODE_SIGN_IDENTITY = "-"`).
+- **Yêu cầu bắt buộc của `pluginkit` (macOS App Extensions)**: Mọi Finder Sync Extension (`.appex`) bắt buộc phải có `com.apple.security.app-sandbox = true` trong entitlements, nếu không daemon `pkd` của macOS sẽ từ chối đăng ký extension.
+- Để `FinderSyncExt` vừa thoả mãn App Sandbox của `pluginkit`, vừa có thể theo dõi toàn bộ cây thư mục gốc `/` và gọi mở ứng dụng bên ngoài (`iTerm.app`), target `FinderSyncExt` sử dụng:
+  - `com.apple.security.app-sandbox = true`
+  - `com.apple.security.temporary-exception.files.all.read-write = true`
+- Khi ký code bằng `codesign` (Ad-hoc `-`), phải ký `FinderSyncExt.appex` trước với entitlements riêng, sau đó ký `FinderMenuTools.app` **không dùng cờ `--deep`** để tránh ghi đè entitlements của Host App lên Extension.

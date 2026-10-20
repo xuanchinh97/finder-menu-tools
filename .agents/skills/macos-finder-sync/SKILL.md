@@ -27,7 +27,8 @@ Use this skill when building, installing, reloading, or troubleshooting the `Fin
    ```
 
 ## 3. Crucial macOS `FinderSync` Nuances
-- **App Sandbox & Root Monitoring**: Monitoring `/` requires either disabling App Sandbox (`com.apple.security.app-sandbox = false`) for local signed builds or granting full read access. For personal developer tools installed in `/Applications`, disabling App Sandbox with ad-hoc signing (`CODE_SIGN_IDENTITY="-"`) allows unrestricted monitoring of `/` and `/Volumes` as well as launching external applications like `iTerm.app`.
+- **App Sandbox & Root Monitoring**: `pluginkit` (`pkd`) strictly requires `com.apple.security.app-sandbox = true` on `.appex` bundles; setting it to `false` causes `pluginkit` to silently ignore the extension (`(no matches)`). To monitor `/` and `/Volumes` and launch `iTerm.app` inside the sandbox, `FinderSyncExt.entitlements` combines `com.apple.security.app-sandbox = true` with `com.apple.security.temporary-exception.files.all.read-write = true`.
+- **Code Signing Order**: Always sign `FinderSyncExt.appex` with its own entitlements first, then sign `FinderMenuTools.app` **without `--deep`** so the host app's entitlements do not overwrite the extension's entitlements.
 - **Extension Registration (`pluginkit`)**:
   - Register extension: `pluginkit -a /Applications/FinderMenuTools.app/Contents/PlugIns/FinderSyncExt.appex`
   - Enable extension: `pluginkit -e use -i com.chinh.FinderMenuTools.FinderSyncExt`
