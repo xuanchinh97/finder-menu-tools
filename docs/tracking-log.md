@@ -95,3 +95,21 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
   - Lệnh mở VS Code qua URL scheme hoạt động chính xác (`Visual Studio Code` nhận diện folder dự án ngay lập tức).
   - Bản build Release đã được ký và cài đặt thành công vào `/Applications/FinderMenuTools.app`.
   - Extension `com.chinh.FinderMenuTools.FinderSyncExt` đang hoạt động trên PID `4047`.
+
+---
+
+## [2026-10-20] Giai đoạn 5: Tối ưu Toggle Hidden Files - Loại bỏ hiện tượng nháy tắt Finder
+
+### Vấn đề ghi nhận (User Feedback)
+- Khi chọn **Toggle Hidden Files**, Finder bị nháy tắt rồi mở lại (`killall Finder`), làm gián đoạn cửa sổ làm việc của người dùng trên màn hình.
+
+### Nguyên nhân gốc rễ (Root Cause)
+- Trước đó, ứng dụng sử dụng lệnh `killall Finder` để buộc Finder nạp lại giá trị `defaults write com.apple.Finder AppleShowAllFiles`. Lệnh này kill toàn bộ tiến trình Finder, khiến mọi cửa sổ đang mở bị đóng rồi khởi động lại.
+
+### Giải pháp kỹ thuật (Smooth Live Toggle via CGEvent)
+- Thay vì `killall Finder`, Host App kết hợp:
+  1. Cập nhật giá trị `AppleShowAllFiles` (true <-> false) trong `defaults` để lưu trạng thái bền vững.
+  2. Bắn sự kiện phím tắt native `Cmd + Shift + .` (Virtual KeyCode `47` kết hợp `flags: [.maskCommand, .maskShift]`) trực tiếp vào session và HID event tap thông qua `CGEvent`.
+- **Kết quả**:
+  - Finder tự động cập nhật ẩn/hiện file ẩn ngay lập tức trong cửa sổ hiện tại mà **không bị tắt, không bị nháy, cửa sổ giữ nguyên 100% trên màn hình**.
+  - Đã kiểm tra tự động qua URL scheme `findermenutools://toggle-hidden`, giá trị chuyển đổi mượt mà giữa `0` và `1` mà không làm thay đổi PID của Finder.
