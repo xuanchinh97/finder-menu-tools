@@ -42,3 +42,31 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
   - `pluginkit -m -v -i com.chinh.FinderMenuTools.FinderSyncExt` trả về trạng thái `+` (Active):
     `+ com.chinh.FinderMenuTools.FinderSyncExt(1.0.0) /Applications/FinderMenuTools.app/Contents/PlugIns/FinderSyncExt.appex`
   - Tiến trình `FinderSyncExt` đã được Finder khởi chạy thành công.
+
+---
+
+## [2026-10-20] Giai đoạn 3: Khắc phục lỗi Sandbox Permission & Bổ sung "Open in Terminal"
+
+### Mục tiêu
+- Sửa lỗi popup thông báo: *"The application 'FinderMenuTools Extension' does not have permission to open..."* khi click chuột phải chọn **Open in iTerm2**.
+- Bổ sung tuỳ chọn **Open in Terminal** trực tiếp trên menu chuột phải.
+- Kiểm thử kỹ lưỡng toàn bộ luồng hoạt động.
+
+### Nguyên nhân gốc rễ (Root Cause Analysis)
+- Extension (`FinderSyncExt.appex`) bắt buộc phải bật Sandbox (`com.apple.security.app-sandbox = true`) để `pluginkit` chấp nhận nạp vào Finder.
+- Khi Extension trong Sandbox gọi `NSWorkspace.shared.open([folderURL], withApplicationAt: itermURL)`, tiến trình LaunchServices (`CoreServicesUIAgent`) kiểm tra token bảo mật và phát hiện tiến trình gọi không có quyền truy cập trực tiếp vào folder đó trong ngữ cảnh gọi mở app khác, dẫn đến mã lỗi OSStatus `-54` (`permErr`) và hiển thị popup cảnh báo lỗi.
+
+### Giải pháp kỹ thuật (URL Scheme Delegation Architecture)
+1. **Host App**:
+   - Đăng ký Custom URL Scheme `findermenutools://` trong `Info.plist`.
+   - Trong `AppDelegate.swift`, triển khai phương thức `application(_:open:)` để đón nhận URL `findermenutools://open?app=<iterm|terminal>&path=<path>`.
+   - Vì Host App không bị sandbox (`app-sandbox = false`), nó sử dụng `/usr/bin/open -a <app> <path>` để mở tab/cửa sổ tại thư mục mục tiêu một cách an toàn và hợp lệ 100%.
+2. **FinderSync Extension**:
+   - Thêm `Open in Terminal` (icon `apple.terminal`) song song cùng `Open in iTerm2` (icon `terminal.fill`).
+   - Thay vì gọi trực tiếp `NSWorkspace.open(withApplicationAt:)`, Extension đóng gói đường dẫn thư mục vào URL `findermenutools://open?...` và gọi `NSWorkspace.shared.open(actionURL)`.
+
+### Kết quả kiểm thử thực tế (Verification)
+- [x] Đã gửi URL test `findermenutools://open?app=terminal&path=/Users/trinhxuanchinh/Workspace/tools`: Terminal mở ngay tại thư mục chỉ định, không có bất kỳ popup phân quyền nào.
+- [x] Đã gửi URL test `findermenutools://open?app=iterm&path=/Users/trinhxuanchinh/Workspace/tools`: iTerm2 nhận lệnh và mở tab mới trỏ vào đúng thư mục.
+- [x] Extension đăng ký hợp lệ: `pluginkit -m -v -p com.apple.FinderSync` báo `+ com.chinh.FinderMenuTools.FinderSyncExt`.
+- [x] Tiến trình `FinderSyncExt` đang hoạt động ổn định trên Finder.

@@ -35,11 +35,23 @@ final class FinderSync: FIFinderSync {
                 keyEquivalent: ""
             )
             openITermItem.target = self
-            if let terminalIcon = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Open in iTerm2") {
-                terminalIcon.isTemplate = true
-                openITermItem.image = terminalIcon
+            if let iTermIcon = NSImage(systemSymbolName: "terminal.fill", accessibilityDescription: "Open in iTerm2") {
+                iTermIcon.isTemplate = true
+                openITermItem.image = iTermIcon
             }
             menu.addItem(openITermItem)
+
+            let openTerminalItem = NSMenuItem(
+                title: "Open in Terminal",
+                action: #selector(openInTerminalAction(_:)),
+                keyEquivalent: ""
+            )
+            openTerminalItem.target = self
+            if let terminalIcon = NSImage(systemSymbolName: "apple.terminal", accessibilityDescription: "Open in Terminal") {
+                terminalIcon.isTemplate = true
+                openTerminalItem.image = terminalIcon
+            }
+            menu.addItem(openTerminalItem)
 
             return menu
         case .contextualMenuForSidebar:
@@ -61,13 +73,54 @@ final class FinderSync: FIFinderSync {
         return []
     }
 
-    /// Resolves a URL to its directory URL (returns the URL itself if it is a directory, or its parent directory if it is a file).
-    private func resolveDirectoryURL(for url: URL) -> URL {
+    /// Resolves a URL to its directory path (returns the path itself if it is a directory, or its parent directory if it is a file).
+    private func resolveDirectoryPath(for url: URL) -> String {
+        let rawPath = url.path(percentEncoded: false)
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory) {
-            return isDirectory.boolValue ? url : url.deletingLastPathComponent()
+        if FileManager.default.fileExists(atPath: rawPath, isDirectory: &isDirectory) {
+            return isDirectory.boolValue
+                ? rawPath
+                : url.deletingLastPathComponent().path(percentEncoded: false)
         }
-        return url.hasDirectoryPath ? url : url.deletingLastPathComponent()
+        return url.hasDirectoryPath
+            ? rawPath
+            : url.deletingLastPathComponent().path(percentEncoded: false)
+    }
+
+    /// Collects unique target directory paths in selection order.
+    private func resolveUniqueDirectoryPaths() -> [String] {
+        let urls = resolveTargetURLs()
+        guard !urls.isEmpty else { return [] }
+
+        var seenPaths = Set<String>()
+        var directoryPaths: [String] = []
+        for url in urls {
+            let dirPath = resolveDirectoryPath(for: url)
+            if !seenPaths.contains(dirPath) {
+                seenPaths.insert(dirPath)
+                directoryPaths.append(dirPath)
+            }
+        }
+        return directoryPaths
+    }
+
+    /// Delegates opening directories to the unsandboxed Host App via custom URL scheme (`findermenutools://open?...`)
+    /// so LaunchServices (`CoreServicesUIAgent`) never blocks the sandboxed FinderSync extension with error -54 (`permErr`).
+    private func openDirectoriesViaHostApp(appType: String) {
+        let directoryPaths = resolveUniqueDirectoryPaths()
+        guard !directoryPaths.isEmpty else { return }
+
+        var components = URLComponents()
+        components.scheme = "findermenutools"
+        components.host = "open"
+        var queryItems = [URLQueryItem(name: "app", value: appType)]
+        for path in directoryPaths {
+            queryItems.append(URLQueryItem(name: "path", value: path))
+        }
+        components.queryItems = queryItems
+
+        guard let actionURL = components.url else { return }
+        NSWorkspace.shared.open(actionURL)
     }
 
     @objc private func copyPathAction(_ sender: AnyObject?) {
@@ -84,35 +137,10 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func openInITermAction(_ sender: AnyObject?) {
-        let urls = resolveTargetURLs()
-        guard !urls.isEmpty else { return }
+        openDirectoriesViaHostApp(appType: "iterm")
+    }
 
-        // Deduplicate target directories while preserving selection order
-        var seenPaths = Set<String>()
-        var directoryURLs: [URL] = []
-        for url in urls {
-            let dirURL = resolveDirectoryURL(for: url)
-            let dirPath = dirURL.path(percentEncoded: false)
-            if !seenPaths.contains(dirPath) {
-                seenPaths.insert(dirPath)
-                directoryURLs.append(dirURL)
-            }
-        }
-
-        guard !directoryURLs.isEmpty else { return }
-
-        let workspace = NSWorkspace.shared
-        let iTermBundleID = "com.googlecode.iterm2"
-        let terminalBundleID = "com.apple.Terminal"
-
-        let appURL = workspace.urlForApplication(withBundleIdentifier: iTermBundleID)
-            ?? (FileManager.default.fileExists(atPath: "/Applications/iTerm.app") ? URL(fileURLWithPath: "/Applications/iTerm.app") : nil)
-            ?? workspace.urlForApplication(withBundleIdentifier: terminalBundleID)
-
-        guard let targetAppURL = appURL else { return }
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        workspace.open(directoryURLs, withApplicationAt: targetAppURL, configuration: configuration, completionHandler: nil)
+    @objc private func openInTerminalAction(_ sender: AnyObject?) {
+        openDirectoriesViaHostApp(appType: "terminal")
     }
 }
