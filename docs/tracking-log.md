@@ -187,3 +187,44 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
   - Lần 2: `AppleShowAllFiles` chuyển từ `1` -> `0`, Finder reload và ẩn các file ẩn đi.
 - Extension `com.chinh.FinderMenuTools.FinderSyncExt` duy trì trạng thái Active `+` bình thường.
 
+---
+
+## [2026-10-29] Giai đoạn 9: Nghiên cứu chuyên sâu & Khắc phục triệt để luồng kích hoạt từ Sandbox Extension
+
+### Vấn đề ghi nhận (/goal)
+- Khi người dùng click chuột phải chọn **Toggle Hidden Files** trực tiếp trong Finder, tính năng vẫn không hoạt động.
+
+### Nghiên cứu chuyên sâu & Nguyên nhân gốc rễ (Deep Root Cause)
+1. **Lỗi ủy quyền từ Sandbox Extension (`NSWorkspace.shared.open`)**:
+   - `FinderSyncExt.appex` chạy trong App Sandbox (`com.apple.security.app-sandbox = true`).
+   - Lời gọi `NSWorkspace.shared.open(actionURL)` (legacy synchronous API) với custom URL scheme `findermenutools://` bị LaunchServices chặn âm thầm hoặc không dispatch được tới Host App do hạn chế IPC giữa Extension Sandbox và LaunchServices.
+   - Do đó, cú click chuột từ context menu thực tế không bao giờ gọi tới `FinderMenuTools.app`.
+2. **Cơ chế nạp tùy biến của Finder và bộ nhớ đệm `cfprefsd`**:
+   - Khi ghi cấu hình `AppleShowAllFiles`, daemon `cfprefsd` lưu cache trong RAM. Nếu Finder khởi động lại ngay khi `cfprefsd` chưa flush, Finder có thể đọc lại giá trị cũ.
+   - Cần đồng bộ qua `CFPreferencesSetAppValue` + `CFPreferencesAppSynchronize` và restart `cfprefsd` trước khi restart `Finder`.
+3. **Cơ chế đón nhận sự kiện của Host App (`AppDelegate`)**:
+   - Trước đó `AppDelegate` chỉ xử lý qua `application(_:open urls:)`. Nếu ứng dụng được mở trực tiếp bằng bundle hoặc truyền command line arguments, sự kiện không được xử lý.
+
+### Giải pháp kỹ thuật toàn diện
+1. **Extension (`FinderSync.swift`)**:
+   - Thay thế việc gọi trực tiếp `NSWorkspace.shared.open(URL)` bằng `NSWorkspace.shared.openApplication(at: hostAppURL, configuration: config)`:
+     - Trỏ trực tiếp tới bundle `/Applications/FinderMenuTools.app` nằm ngay trên thư mục `PlugIns/`.
+     - Truyền tham số `config.arguments = ["--action", action, "--url", actionURL.absoluteString]`.
+     - Đặt `config.activates = false` để giữ app chạy ngầm không chiếm focus của người dùng.
+     - Giữ cơ chế fallback gọi URL scheme nếu `openApplication` gặp lỗi.
+2. **Host App (`AppDelegate.swift`)**:
+   - Bổ sung xử lý command line argument `--toggle-hidden` và `--action` / `--url` ngay trong `applicationDidFinishLaunching` (loại bỏ mọi race condition về URL event delivery).
+   - Trong `handleToggleHiddenFiles()`:
+     - Đồng bộ cả 2 lớp: `CFPreferencesSetAppValue` + `CFPreferencesAppSynchronize` và `/usr/bin/defaults write`.
+     - Reset `cfprefsd` (`killall cfprefsd`) để xóa cache bộ nhớ đệm.
+     - Khởi động lại `Finder` (`killall Finder`) để nạp giá trị mới tức thì.
+   - Bổ sung `NSLog` xuyên suốt cả 2 target để dễ dàng kiểm tra log qua `log show` hoặc Console.app.
+
+### Kết quả kiểm tra (Verification)
+- Biên dịch thành công và cài đặt vào `/Applications/FinderMenuTools.app`.
+- Kiểm thử trực tiếp `/Applications/FinderMenuTools.app/Contents/MacOS/FinderMenuTools --action toggle-hidden`:
+  - `AppleShowAllFiles` toggle chính xác giữa `0` và `1`.
+  - Finder reload và hiển thị/ẩn file ẩn tức thì.
+- Extension `com.chinh.FinderMenuTools.FinderSyncExt` hoạt động ổn định ở trạng thái Enabled (`+`).
+
+

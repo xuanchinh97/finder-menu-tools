@@ -31,23 +31,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         handledURLActionOnLaunch = true
-        for url in urls where url.scheme == "findermenutools" {
+        for url in urls where url.scheme?.lowercased() == "findermenutools" {
             handleActionURL(url)
         }
-        if window == nil || !(window?.isVisible ?? false) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                if self.window == nil || !(self.window?.isVisible ?? false) {
-                    NSApp.terminate(nil)
-                }
-            }
-        }
+        terminateIfNoWindow()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerDefaultPreferences()
+
+        let args = CommandLine.arguments
+        if args.contains("--toggle-hidden") || (args.firstIndex(of: "--action").map { $0 + 1 < args.count && args[$0 + 1] == "toggle-hidden" } ?? false) {
+            handledURLActionOnLaunch = true
+            handleToggleHiddenFiles()
+            terminateIfNoWindow()
+            return
+        }
+
+        if let urlIndex = args.firstIndex(of: "--url"), urlIndex + 1 < args.count,
+           let url = URL(string: args[urlIndex + 1]), url.scheme?.lowercased() == "findermenutools" {
+            handledURLActionOnLaunch = true
+            handleActionURL(url)
+            terminateIfNoWindow()
+            return
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             if !self.handledURLActionOnLaunch {
                 self.showStatusWindow()
+            }
+        }
+    }
+
+    private func terminateIfNoWindow() {
+        if window == nil || !(window?.isVisible ?? false) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                if self.window == nil || !(self.window?.isVisible ?? false) {
+                    NSApp.terminate(nil)
+                }
             }
         }
     }
@@ -75,8 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleActionURL(_ url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let action = components.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
-        switch components.host {
+        switch action {
         case "open":
             handleOpenApp(components: components)
         case "newfile":
@@ -151,7 +173,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleToggleHiddenFiles() {
-        // 1. Read current Finder preference (defaults to false/0 if not set)
+        NSLog("[FinderMenuTools] handleToggleHiddenFiles executing")
+
+        // 1. Read current Finder preference
+        let key = "AppleShowAllFiles" as CFString
+        let domain = "com.apple.finder" as CFString
+
         let readProcess = Process()
         readProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
         readProcess.arguments = ["read", "com.apple.finder", "AppleShowAllFiles"]
@@ -164,21 +191,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let currentStr = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "0"
         let isCurrentlyShown = (currentStr == "true" || currentStr == "yes" || currentStr == "1")
-        let newValue = isCurrentlyShown ? "false" : "true"
+        let newValueBool = !isCurrentlyShown
+        let newValueStr = newValueBool ? "true" : "false"
 
-        // 2. Write toggled value to com.apple.finder
+        // 2. Set value in CoreFoundation preferences AND via defaults write
+        CFPreferencesSetAppValue(key, (newValueBool ? kCFBooleanTrue : kCFBooleanFalse), domain)
+        CFPreferencesAppSynchronize(domain)
+
         let writeProcess = Process()
         writeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        writeProcess.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", newValue]
+        writeProcess.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", newValueStr]
         try? writeProcess.run()
         writeProcess.waitUntilExit()
 
-        // 3. Restart Finder to immediately apply and refresh hidden files visibility
-        let killProcess = Process()
-        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        killProcess.arguments = ["Finder"]
-        try? killProcess.run()
-        killProcess.waitUntilExit()
+        // 3. Clear cfprefsd cache to ensure new Finder reads updated value immediately
+        let killCfprefsd = Process()
+        killCfprefsd.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        killCfprefsd.arguments = ["cfprefsd"]
+        try? killCfprefsd.run()
+        killCfprefsd.waitUntilExit()
+
+        // 4. Restart Finder to immediately apply and refresh hidden files visibility
+        let killFinder = Process()
+        killFinder.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        killFinder.arguments = ["Finder"]
+        try? killFinder.run()
+        killFinder.waitUntilExit()
+
+        NSLog("[FinderMenuTools] handleToggleHiddenFiles completed: toggled to %@", newValueStr)
     }
 
     private func showStatusWindow() {

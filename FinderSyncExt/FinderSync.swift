@@ -155,24 +155,48 @@ final class FinderSync: FIFinderSync {
         return directoryPaths
     }
 
+    private func dispatchToHostApp(action: String, queryItems: [URLQueryItem] = []) {
+        var components = URLComponents()
+        components.scheme = "findermenutools"
+        components.host = action
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let actionURL = components.url else { return }
+
+        // 1. Locate host app bundle URL directly
+        let extBundle = Bundle(for: type(of: self))
+        let hostAppURL = extBundle.bundleURL
+            .deletingLastPathComponent() // PlugIns
+            .deletingLastPathComponent() // Contents
+            .deletingLastPathComponent() // FinderMenuTools.app
+
+        let config = NSWorkspace.OpenConfiguration()
+        config.arguments = ["--action", action, "--url", actionURL.absoluteString]
+        config.promptsUserIfNeeded = false
+        config.activates = false
+
+        NSLog("[FinderSyncExt] Dispatching action: %@ to hostAppURL: %@", action, hostAppURL.path)
+        NSWorkspace.shared.openApplication(at: hostAppURL, configuration: config) { _, error in
+            if let error = error {
+                NSLog("[FinderSyncExt] openApplication failed (%@), trying fallback URL scheme: %@", error.localizedDescription, actionURL.absoluteString)
+                NSWorkspace.shared.open(actionURL)
+            }
+        }
+    }
+
     private func openDirectoriesViaHostApp(appType: String) {
         let directoryPaths = resolveUniqueDirectoryPaths()
         guard !directoryPaths.isEmpty else { return }
 
-        var components = URLComponents()
-        components.scheme = "findermenutools"
-        components.host = "open"
         var queryItems = [URLQueryItem(name: "app", value: appType)]
         for path in directoryPaths {
             queryItems.append(URLQueryItem(name: "path", value: path))
         }
-        components.queryItems = queryItems
-
-        guard let actionURL = components.url else { return }
-        NSWorkspace.shared.open(actionURL)
+        dispatchToHostApp(action: "open", queryItems: queryItems)
     }
 
-    @objc private func copyPathAction(_ sender: AnyObject?) {
+    @objc func copyPathAction(_ sender: AnyObject?) {
         let urls = resolveTargetURLs()
         guard !urls.isEmpty else { return }
         let paths = urls.map { $0.path(percentEncoded: false) }.joined(separator: "\n")
@@ -181,7 +205,7 @@ final class FinderSync: FIFinderSync {
         pasteboard.setString(paths, forType: .string)
     }
 
-    @objc private func copyNameAction(_ sender: AnyObject?) {
+    @objc func copyNameAction(_ sender: AnyObject?) {
         let urls = resolveTargetURLs()
         guard !urls.isEmpty else { return }
         let names = urls.map { $0.lastPathComponent }.joined(separator: "\n")
@@ -190,37 +214,28 @@ final class FinderSync: FIFinderSync {
         pasteboard.setString(names, forType: .string)
     }
 
-    @objc private func openTerminalAction(_ sender: AnyObject?) {
+    @objc func openTerminalAction(_ sender: AnyObject?) {
         openDirectoriesViaHostApp(appType: "terminal")
     }
 
-    @objc private func openITermAction(_ sender: AnyObject?) {
+    @objc func openITermAction(_ sender: AnyObject?) {
         openDirectoriesViaHostApp(appType: "iterm")
     }
 
-    @objc private func openVSCodeAction(_ sender: AnyObject?) {
+    @objc func openVSCodeAction(_ sender: AnyObject?) {
         openDirectoriesViaHostApp(appType: "vscode")
     }
 
-    @objc private func newFileAction(_ sender: AnyObject?) {
+    @objc func newFileAction(_ sender: AnyObject?) {
         let directoryPaths = resolveUniqueDirectoryPaths()
         guard let firstDir = directoryPaths.first else { return }
 
-        var components = URLComponents()
-        components.scheme = "findermenutools"
-        components.host = "newfile"
-        components.queryItems = [URLQueryItem(name: "dir", value: firstDir)]
-
-        guard let actionURL = components.url else { return }
-        NSWorkspace.shared.open(actionURL)
+        let queryItems = [URLQueryItem(name: "dir", value: firstDir)]
+        dispatchToHostApp(action: "newfile", queryItems: queryItems)
     }
 
-    @objc private func toggleHiddenFilesAction(_ sender: AnyObject?) {
-        var components = URLComponents()
-        components.scheme = "findermenutools"
-        components.host = "toggle-hidden"
-
-        guard let actionURL = components.url else { return }
-        NSWorkspace.shared.open(actionURL)
+    @objc func toggleHiddenFilesAction(_ sender: AnyObject?) {
+        NSLog("[FinderSyncExt] toggleHiddenFilesAction clicked by user")
+        dispatchToHostApp(action: "toggle-hidden")
     }
 }
