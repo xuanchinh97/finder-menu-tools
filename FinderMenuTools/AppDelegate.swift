@@ -151,12 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleToggleHiddenFiles() {
-        // 1. Read & toggle persistent Finder preference (using exact lowercase 'com.apple.finder')
+        // 1. Read current Finder preference (defaults to false/0 if not set)
         let readProcess = Process()
         readProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
         readProcess.arguments = ["read", "com.apple.finder", "AppleShowAllFiles"]
         let pipe = Pipe()
         readProcess.standardOutput = pipe
+        readProcess.standardError = Pipe()
         try? readProcess.run()
         readProcess.waitUntilExit()
 
@@ -165,40 +166,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isCurrentlyShown = (currentStr == "true" || currentStr == "yes" || currentStr == "1")
         let newValue = isCurrentlyShown ? "false" : "true"
 
+        // 2. Write toggled value to com.apple.finder
         let writeProcess = Process()
         writeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
         writeProcess.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", newValue]
         try? writeProcess.run()
         writeProcess.waitUntilExit()
 
-        // 2. Activate Finder and send native keystroke Cmd+Shift+. via AppleScript
-        let script = """
-        tell application "Finder" to activate
-        delay 0.05
-        tell application "System Events"
-            keystroke "." using {command down, shift down}
-        end tell
-        """
-        let osascript = Process()
-        osascript.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        osascript.arguments = ["-e", script]
-        try? osascript.run()
-        osascript.waitUntilExit()
-
-        // 3. Post targeted CGEvent directly to Finder's PID as fallback
-        if let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) {
-            let pid = finder.processIdentifier
-            let src = CGEventSource(stateID: .combinedSessionState)
-            if let down = CGEvent(keyboardEventSource: src, virtualKey: 47, keyDown: true) {
-                down.flags = [.maskCommand, .maskShift]
-                down.postToPid(pid)
-            }
-            usleep(20000)
-            if let up = CGEvent(keyboardEventSource: src, virtualKey: 47, keyDown: false) {
-                up.flags = [.maskCommand, .maskShift]
-                up.postToPid(pid)
-            }
-        }
+        // 3. Restart Finder to immediately apply and refresh hidden files visibility
+        let killProcess = Process()
+        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        killProcess.arguments = ["Finder"]
+        try? killProcess.run()
+        killProcess.waitUntilExit()
     }
 
     private func showStatusWindow() {

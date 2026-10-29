@@ -155,3 +155,35 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 ### Kết quả kiểm tra
 - Domain `com.apple.finder AppleShowAllFiles` cập nhật chính xác giữa `0` và `1`.
 - Đã build và cập nhật bản mới nhất vào `/Applications/FinderMenuTools.app`.
+
+---
+
+## [2026-10-29] Giai đoạn 8: Fix lỗi triệt để tính năng Toggle Hidden Files không hoạt động
+
+### Vấn đề ghi nhận
+- Người dùng phản hồi tính năng **Toggle Hidden Files** trên context menu Finder không hoạt động (không thấy ẩn/hiện file ẩn sau khi click).
+
+### Nguyên nhân gốc rễ (Root Cause Analysis)
+1. **Lỗi phân quyền AppleScript Keystroke (Error 1002)**:
+   - Trong macOS Sonoma/Sequoia, lệnh `osascript` gửi phím tắt qua System Events (`tell application "System Events" to keystroke "." using {command down, shift down}`) bị macOS TCC chặn với mã lỗi:
+     `System Events got an error: osascript is not allowed to send keystrokes. (1002)`
+   - Script thất bại hoàn toàn trừ khi người dùng cấp quyền Accessibility đặc biệt trong System Settings.
+2. **Lỗi CGEvent dropped**:
+   - Tương tự, `CGEvent(keyboardEventSource: ...).postToPid(...)` bị hệ thống Quartz Event Services chặn/drop âm thầm khi ứng dụng chưa có quyền `AXIsProcessTrusted`.
+3. **Finder không được refresh**:
+   - Do cả `osascript` và `CGEvent` đều bị macOS chặn, chỉ có lệnh `defaults write com.apple.finder AppleShowAllFiles -bool ...` được thực thi trong file cấu hình plist.
+   - Finder không tự động đọc lại plist nếu không được restart (`killall Finder`). Kết quả là giao diện Finder hoàn toàn không thay đổi.
+
+### Giải pháp kỹ thuật
+- Trong [`AppDelegate.swift`](../FinderMenuTools/AppDelegate.swift), loại bỏ khối code giả lập phím tắt `osascript` và `CGEvent` bị chặn phân quyền TCC.
+- Sau khi cập nhật giá trị `AppleShowAllFiles` qua `/usr/bin/defaults`, gọi trực tiếp `/usr/bin/killall Finder`:
+  - Không đòi hỏi bất kỳ quyền Accessibility hay TCC đặc biệt nào từ phía người dùng.
+  - Finder được macOS `launchd` tự động phục hồi tức thì trong < 0.2s, giữ nguyên các cửa sổ đang mở và nạp lại chính xác trạng thái ẩn/hiện file ẩn.
+
+### Kết quả kiểm tra (Verification)
+- Đã build và cài đặt thành công vào `/Applications/FinderMenuTools.app`.
+- Kiểm thử luồng URL scheme `findermenutools://toggle-hidden`:
+  - Lần 1: `AppleShowAllFiles` chuyển từ `0` -> `1`, Finder reload và hiển thị các file ẩn.
+  - Lần 2: `AppleShowAllFiles` chuyển từ `1` -> `0`, Finder reload và ẩn các file ẩn đi.
+- Extension `com.chinh.FinderMenuTools.FinderSyncExt` duy trì trạng thái Active `+` bình thường.
+
