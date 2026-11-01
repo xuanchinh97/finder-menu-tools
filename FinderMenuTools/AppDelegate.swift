@@ -3,9 +3,10 @@ import FinderSync
 
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static var sharedDelegate: AppDelegate?
+
     private var window: NSWindow?
     private let statusLabel = NSTextField(labelWithString: "")
-    private var handledURLActionOnLaunch = false
 
     // Preference Checkboxes
     private var chkCopyPath: NSButton!
@@ -24,17 +25,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
+        sharedDelegate = delegate // Retain strongly to prevent memory deallocation / SIGSEGV
         app.delegate = delegate
         app.setActivationPolicy(.accessory)
         app.run()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        handledURLActionOnLaunch = true
         for url in urls where url.scheme?.lowercased() == "findermenutools" {
             handleActionURL(url)
         }
-        terminateIfNoWindow()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -42,38 +42,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let args = CommandLine.arguments
         if args.contains("--toggle-hidden") || (args.firstIndex(of: "--action").map { $0 + 1 < args.count && args[$0 + 1] == "toggle-hidden" } ?? false) {
-            handledURLActionOnLaunch = true
             handleToggleHiddenFiles()
-            terminateIfNoWindow()
             return
         }
 
         if let urlIndex = args.firstIndex(of: "--url"), urlIndex + 1 < args.count,
            let url = URL(string: args[urlIndex + 1]), url.scheme?.lowercased() == "findermenutools" {
-            handledURLActionOnLaunch = true
             handleActionURL(url)
-            terminateIfNoWindow()
             return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            if !self.handledURLActionOnLaunch {
+        // Only show settings window if user launched FinderMenuTools manually without action arguments
+        if args.count <= 1 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.showStatusWindow()
             }
         }
     }
 
-    private func terminateIfNoWindow() {
-        if window == nil || !(window?.isVisible ?? false) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                if self.window == nil || !(self.window?.isVisible ?? false) {
-                    NSApp.terminate(nil)
-                }
-            }
-        }
-    }
-
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // If user manually clicks app icon in Applications / Dock, show settings window
         if !flag {
             showStatusWindow()
         }
@@ -134,7 +122,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             process.arguments = ["-a", targetAppName, dirPath]
             try? process.run()
-            process.waitUntilExit()
         }
     }
 
@@ -173,12 +160,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleToggleHiddenFiles() {
-        NSLog("[FinderMenuTools] handleToggleHiddenFiles executing")
+        NSLog("[FinderMenuTools] handleToggleHiddenFiles start")
 
         // 1. Read current Finder preference
-        let key = "AppleShowAllFiles" as CFString
-        let domain = "com.apple.finder" as CFString
-
         let readProcess = Process()
         readProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
         readProcess.arguments = ["read", "com.apple.finder", "AppleShowAllFiles"]
@@ -191,34 +175,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let currentStr = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "0"
         let isCurrentlyShown = (currentStr == "true" || currentStr == "yes" || currentStr == "1")
-        let newValueBool = !isCurrentlyShown
-        let newValueStr = newValueBool ? "true" : "false"
+        let newValueStr = isCurrentlyShown ? "false" : "true"
 
-        // 2. Set value in CoreFoundation preferences AND via defaults write
-        CFPreferencesSetAppValue(key, (newValueBool ? kCFBooleanTrue : kCFBooleanFalse), domain)
-        CFPreferencesAppSynchronize(domain)
-
+        // 2. Write new state using defaults command
         let writeProcess = Process()
         writeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
         writeProcess.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", newValueStr]
         try? writeProcess.run()
         writeProcess.waitUntilExit()
 
-        // 3. Clear cfprefsd cache to ensure new Finder reads updated value immediately
-        let killCfprefsd = Process()
-        killCfprefsd.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        killCfprefsd.arguments = ["cfprefsd"]
-        try? killCfprefsd.run()
-        killCfprefsd.waitUntilExit()
-
-        // 4. Restart Finder to immediately apply and refresh hidden files visibility
+        // 3. Restart Finder to apply changes cleanly and immediately
         let killFinder = Process()
         killFinder.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
         killFinder.arguments = ["Finder"]
         try? killFinder.run()
         killFinder.waitUntilExit()
 
-        NSLog("[FinderMenuTools] handleToggleHiddenFiles completed: toggled to %@", newValueStr)
+        NSLog("[FinderMenuTools] handleToggleHiddenFiles finished: toggled to %@", newValueStr)
     }
 
     private func showStatusWindow() {
@@ -264,21 +237,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chkNewFile = createCheckbox("New File Here...", key: "pref_new_file", y: 115, defs: defs)
         chkToggleHidden = createCheckbox("Toggle Hidden Files", key: "pref_toggle_hidden", y: 85, defs: defs)
 
-        let openSettingsButton = NSButton(
-            title: "Extension Settings...",
-            target: self,
-            action: #selector(openExtensionSettings)
-        )
-        openSettingsButton.bezelStyle = .rounded
-        openSettingsButton.frame = NSRect(x: 24, y: 24, width: 160, height: 32)
+        let settingsBtn = NSButton(title: "Open Extension Settings...", target: self, action: #selector(openSystemExtensionSettings(_:)))
+        settingsBtn.bezelStyle = .rounded
+        settingsBtn.frame = NSRect(x: 20, y: 24, width: 220, height: 32)
 
-        let refreshButton = NSButton(
-            title: "Refresh Finder",
-            target: self,
-            action: #selector(reloadFinder)
-        )
-        refreshButton.bezelStyle = .rounded
-        refreshButton.frame = NSRect(x: 326, y: 24, width: 130, height: 32)
+        let quitBtn = NSButton(title: "Quit", target: self, action: #selector(quitApp(_:)))
+        quitBtn.bezelStyle = .rounded
+        quitBtn.frame = NSRect(x: 370, y: 24, width: 85, height: 32)
 
         contentView.addSubview(titleLabel)
         contentView.addSubview(statusLabel)
@@ -291,48 +256,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(chkOpenVSCode)
         contentView.addSubview(chkNewFile)
         contentView.addSubview(chkToggleHidden)
-        contentView.addSubview(openSettingsButton)
-        contentView.addSubview(refreshButton)
+        contentView.addSubview(settingsBtn)
+        contentView.addSubview(quitBtn)
 
         win.contentView = contentView
+        self.window = win
+
         refreshExtensionStatus()
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        self.window = win
     }
 
     private func createCheckbox(_ title: String, key: String, y: CGFloat, defs: UserDefaults) -> NSButton {
-        let btn = NSButton(checkboxWithTitle: title, target: self, action: #selector(checkboxChanged(_:)))
-        btn.frame = NSRect(x: 28, y: y, width: 300, height: 22)
+        let btn = NSButton(checkboxWithTitle: title, target: self, action: #selector(checkboxToggled(_:)))
+        btn.frame = NSRect(x: 24, y: y, width: 280, height: 22)
         btn.identifier = NSUserInterfaceItemIdentifier(key)
-        btn.state = defs.bool(forKey: key) ? .on : .off
+        btn.state = (defs.object(forKey: key) == nil || defs.bool(forKey: key)) ? .on : .off
         return btn
     }
 
-    @objc private func checkboxChanged(_ sender: NSButton) {
+    @objc private func checkboxToggled(_ sender: NSButton) {
         guard let key = sender.identifier?.rawValue else { return }
-        AppDelegate.sharedDefaults.set(sender.state == .on, forKey: key)
+        let isEnabled = (sender.state == .on)
+        AppDelegate.sharedDefaults.set(isEnabled, forKey: key)
     }
 
-    @objc private func refreshExtensionStatus() {
-        let enabled = FIFinderSyncController.isExtensionEnabled
-        if enabled {
-            statusLabel.stringValue = "Status: Active (Extension is enabled in Finder)"
+    private func refreshExtensionStatus() {
+        let isEnabled = FIFinderSyncController.isExtensionEnabled
+        if isEnabled {
+            statusLabel.stringValue = "Status: Finder Extension is ENABLED"
             statusLabel.textColor = .systemGreen
         } else {
-            statusLabel.stringValue = "Status: Inactive (Enable in System Settings > Extensions)"
+            statusLabel.stringValue = "Status: Finder Extension is DISABLED (enable in System Settings)"
             statusLabel.textColor = .systemOrange
         }
     }
 
-    @objc private func reloadFinder() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        process.arguments = ["Finder"]
-        try? process.run()
+    @objc private func openSystemExtensionSettings(_ sender: AnyObject?) {
+        FIFinderSyncController.showExtensionManagementInterface()
     }
 
-    @objc private func openExtensionSettings() {
-        FIFinderSyncController.showExtensionManagementInterface()
+    @objc private func quitApp(_ sender: AnyObject?) {
+        NSApp.terminate(nil)
     }
 }

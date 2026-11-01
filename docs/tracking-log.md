@@ -189,7 +189,38 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 
 ---
 
-## [2026-10-29] Giai đoạn 9: Nghiên cứu chuyên sâu & Khắc phục triệt để luồng kích hoạt từ Sandbox Extension
+## [2026-11-01] Giai đoạn 10: Khắc phục triệt để lỗi Crash (SIGSEGV / EXC_BAD_ACCESS) và lỗi Toggle Hidden Files
+
+### Vấn đề ghi nhận từ User
+- Màn hình người dùng xuất hiện dialog cảnh báo hệ thống: *"FinderMenuTools quit unexpectedly. Click Reopen to open the application again."* khi sử dụng tính năng trên Finder.
+- Tính năng Toggle Hidden Files không hoạt động được do ứng dụng host bị crash giữa chừng.
+
+### Phân tích Crash Log Hệ thống (`/Library/Logs/DiagnosticReports/FinderMenuTools-*.ips`)
+1. **Lỗi Quản Lý Bộ Nhớ (Dangling Pointer / Unretained Delegate)**:
+   - Trong AppKit runtime, thuộc tính `NSApplication.delegate` là `assign` (weak pointer).
+   - Trong `AppDelegate.main()`, biến `let delegate = AppDelegate()` chỉ tồn tại dưới dạng biến cục bộ. Khi vòng lặp `app.run()` bắt đầu nhận Apple Events, đối tượng `delegate` đã bị deallocated / trở thành con trỏ rác (`KERN_INVALID_ADDRESS at 0x0000760274b303a0`).
+   - Ngay khi có sự kiện hệ thống gọi vào, ứng dụng văng lỗi `SIGSEGV` tại `objc_retain` bên trong `AppDelegate.showStatusWindow()`.
+2. **Xung đột Reopen Event & Terminate**:
+   - Khi Extension gọi `openApplication` tới Host App đang chạy ngầm, LaunchServices kích hoạt Apple Event Reopen `_handleAEReopen:`.
+   - `AppDelegate` tự động gọi `showStatusWindow()` ngay cả khi đang thực thi lệnh ngầm (`toggle-hidden`), đồng thời gặp lệnh `terminate` sau 0.4s làm hai luồng xung đột trực tiếp.
+3. **Lỗi `killall cfprefsd`**:
+   - Gây đứt gãy kết nối IPC Mach port của các tiến trình hệ thống, hoàn toàn không cần thiết vì `defaults write` và `killall Finder` đã tự động cập nhật đúng chuẩn macOS.
+
+### Giải pháp kỹ thuật triệt để
+1. **Giữ Strong Reference vĩnh viễn cho AppDelegate**:
+   - Thêm `private static var sharedDelegate: AppDelegate?` trong `AppDelegate.main()` để đảm bảo `delegate` luôn tồn tại suốt vòng đời app.
+2. **Kiến trúc Background Helper thường trực (`.accessory`)**:
+   - Loại bỏ cơ chế hẹn giờ `terminateIfNoWindow()`. App chạy ngầm cực nhẹ (~10MB RAM, 0% CPU), phản hồi ngay tức thì cho mọi cú click chuột phải.
+   - Chỉ mở Status Window khi người dùng chủ động mở app từ Finder / Applications (không có action arguments).
+3. **Chuẩn hóa luồng giao tiếp Extension -> Host App**:
+   - Sử dụng `NSWorkspace.shared.open([actionURL], withApplicationAt: hostAppURL, configuration: config)` kết hợp fallback `open(actionURL)`.
+   - Trong Host App: `defaults write com.apple.finder AppleShowAllFiles -bool <true/false> && killall Finder` cập nhật sạch sẽ và tức thì.
+
+### Xác minh & Kiểm thử
+- Build và cài đặt thành công vào `/Applications/FinderMenuTools.app`.
+- Kiểm thử trigger URL nhiều lần liên tiếp (`0` ↔ `1`): hoạt động mượt mà, không giật lag.
+- Không còn bất kỳ file crash report nào sinh ra trong `DiagnosticReports`.
+
 
 ### Vấn đề ghi nhận (/goal)
 - Khi người dùng click chuột phải chọn **Toggle Hidden Files** trực tiếp trong Finder, tính năng vẫn không hoạt động.

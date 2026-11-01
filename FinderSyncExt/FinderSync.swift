@@ -177,9 +177,9 @@ final class FinderSync: FIFinderSync {
         config.activates = false
 
         NSLog("[FinderSyncExt] Dispatching action: %@ to hostAppURL: %@", action, hostAppURL.path)
-        NSWorkspace.shared.openApplication(at: hostAppURL, configuration: config) { _, error in
+        NSWorkspace.shared.open([actionURL], withApplicationAt: hostAppURL, configuration: config) { _, error in
             if let error = error {
-                NSLog("[FinderSyncExt] openApplication failed (%@), trying fallback URL scheme: %@", error.localizedDescription, actionURL.absoluteString)
+                NSLog("[FinderSyncExt] open failed (%@), trying fallback URL scheme: %@", error.localizedDescription, actionURL.absoluteString)
                 NSWorkspace.shared.open(actionURL)
             }
         }
