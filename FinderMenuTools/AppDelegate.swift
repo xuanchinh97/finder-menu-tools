@@ -5,18 +5,6 @@ import FinderSync
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var sharedDelegate: AppDelegate?
 
-    private var window: NSWindow?
-    private let statusLabel = NSTextField(labelWithString: "")
-
-    // Preference Checkboxes
-    private var chkCopyPath: NSButton!
-    private var chkCopyName: NSButton!
-    private var chkOpenTerminal: NSButton!
-    private var chkOpenITerm: NSButton!
-    private var chkOpenVSCode: NSButton!
-    private var chkNewFile: NSButton!
-    private var chkToggleHidden: NSButton!
-
     static let defaultsSuite = "group.com.chinh.FinderMenuTools"
     static var sharedDefaults: UserDefaults {
         UserDefaults(suiteName: defaultsSuite) ?? .standard
@@ -25,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
-        sharedDelegate = delegate // Retain strongly to prevent memory deallocation / SIGSEGV
+        sharedDelegate = delegate // Retain strongly to prevent memory deallocation
         app.delegate = delegate
         app.setActivationPolicy(.accessory)
         app.run()
@@ -51,20 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             handleActionURL(url)
             return
         }
-
-        // Only show settings window if user launched FinderMenuTools manually without action arguments
-        if args.count <= 1 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.showStatusWindow()
-            }
-        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // If user manually clicks app icon in Applications / Dock, show settings window
-        if !flag {
-            showStatusWindow()
-        }
+        // Never show any popup window
         return true
     }
 
@@ -154,9 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if window == nil || !(window?.isVisible ?? false) {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func handleToggleHiddenFiles() {
@@ -184,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? writeProcess.run()
         writeProcess.waitUntilExit()
 
-        // 3. Restart Finder to apply changes cleanly and immediately
+        // 3. Restart Finder to apply changes immediately and reliably
         let killFinder = Process()
         killFinder.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
         killFinder.arguments = ["Finder"]
@@ -192,111 +168,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         killFinder.waitUntilExit()
 
         NSLog("[FinderMenuTools] handleToggleHiddenFiles finished: toggled to %@", newValueStr)
-    }
-
-    private func showStatusWindow() {
-        NSApp.setActivationPolicy(.regular)
-        if let existingWindow = window {
-            refreshExtensionStatus()
-            existingWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        win.center()
-        win.title = "FinderMenuTools Settings"
-
-        let contentView = NSView(frame: win.contentRect(forFrameRect: win.frame))
-
-        let titleLabel = NSTextField(labelWithString: "Finder Context Menu Tools")
-        titleLabel.font = NSFont.boldSystemFont(ofSize: 17)
-        titleLabel.frame = NSRect(x: 24, y: 370, width: 432, height: 26)
-
-        statusLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        statusLabel.frame = NSRect(x: 24, y: 338, width: 432, height: 22)
-
-        let divider = NSBox(frame: NSRect(x: 24, y: 326, width: 432, height: 1))
-        divider.boxType = .separator
-
-        let sectionLabel = NSTextField(labelWithString: "Enabled Context Menu Items:")
-        sectionLabel.font = NSFont.boldSystemFont(ofSize: 13)
-        sectionLabel.frame = NSRect(x: 24, y: 295, width: 432, height: 20)
-
-        let defs = AppDelegate.sharedDefaults
-        chkCopyPath = createCheckbox("Copy Path", key: "pref_copy_path", y: 265, defs: defs)
-        chkCopyName = createCheckbox("Copy Name", key: "pref_copy_name", y: 235, defs: defs)
-        chkOpenTerminal = createCheckbox("Open in Terminal", key: "pref_open_terminal", y: 205, defs: defs)
-        chkOpenITerm = createCheckbox("Open in iTerm2", key: "pref_open_iterm", y: 175, defs: defs)
-        chkOpenVSCode = createCheckbox("Open in VS Code", key: "pref_open_vscode", y: 145, defs: defs)
-        chkNewFile = createCheckbox("New File Here...", key: "pref_new_file", y: 115, defs: defs)
-        chkToggleHidden = createCheckbox("Toggle Hidden Files", key: "pref_toggle_hidden", y: 85, defs: defs)
-
-        let settingsBtn = NSButton(title: "Open Extension Settings...", target: self, action: #selector(openSystemExtensionSettings(_:)))
-        settingsBtn.bezelStyle = .rounded
-        settingsBtn.frame = NSRect(x: 20, y: 24, width: 220, height: 32)
-
-        let quitBtn = NSButton(title: "Quit", target: self, action: #selector(quitApp(_:)))
-        quitBtn.bezelStyle = .rounded
-        quitBtn.frame = NSRect(x: 370, y: 24, width: 85, height: 32)
-
-        contentView.addSubview(titleLabel)
-        contentView.addSubview(statusLabel)
-        contentView.addSubview(divider)
-        contentView.addSubview(sectionLabel)
-        contentView.addSubview(chkCopyPath)
-        contentView.addSubview(chkCopyName)
-        contentView.addSubview(chkOpenTerminal)
-        contentView.addSubview(chkOpenITerm)
-        contentView.addSubview(chkOpenVSCode)
-        contentView.addSubview(chkNewFile)
-        contentView.addSubview(chkToggleHidden)
-        contentView.addSubview(settingsBtn)
-        contentView.addSubview(quitBtn)
-
-        win.contentView = contentView
-        self.window = win
-
-        refreshExtensionStatus()
-        win.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    private func createCheckbox(_ title: String, key: String, y: CGFloat, defs: UserDefaults) -> NSButton {
-        let btn = NSButton(checkboxWithTitle: title, target: self, action: #selector(checkboxToggled(_:)))
-        btn.frame = NSRect(x: 24, y: y, width: 280, height: 22)
-        btn.identifier = NSUserInterfaceItemIdentifier(key)
-        btn.state = (defs.object(forKey: key) == nil || defs.bool(forKey: key)) ? .on : .off
-        return btn
-    }
-
-    @objc private func checkboxToggled(_ sender: NSButton) {
-        guard let key = sender.identifier?.rawValue else { return }
-        let isEnabled = (sender.state == .on)
-        AppDelegate.sharedDefaults.set(isEnabled, forKey: key)
-    }
-
-    private func refreshExtensionStatus() {
-        let isEnabled = FIFinderSyncController.isExtensionEnabled
-        if isEnabled {
-            statusLabel.stringValue = "Status: Finder Extension is ENABLED"
-            statusLabel.textColor = .systemGreen
-        } else {
-            statusLabel.stringValue = "Status: Finder Extension is DISABLED (enable in System Settings)"
-            statusLabel.textColor = .systemOrange
-        }
-    }
-
-    @objc private func openSystemExtensionSettings(_ sender: AnyObject?) {
-        FIFinderSyncController.showExtensionManagementInterface()
-    }
-
-    @objc private func quitApp(_ sender: AnyObject?) {
-        NSApp.terminate(nil)
     }
 }

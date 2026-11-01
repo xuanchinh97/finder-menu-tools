@@ -189,7 +189,28 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 
 ---
 
-## [2026-11-01] Giai đoạn 10: Khắc phục triệt để lỗi Crash (SIGSEGV / EXC_BAD_ACCESS) và lỗi Toggle Hidden Files
+## [2026-11-01] Giai đoạn 11: Loại bỏ hoàn toàn Popup Settings Window và Ổn định trải nghiệm người dùng
+
+### Vấn đề ghi nhận từ User
+- Mỗi khi chọn các tính năng từ menu chuột phải Finder (như Toggle Hidden Files), cửa sổ **FinderMenuTools Settings** lại tự động bật lên trên màn hình gây phiền toái.
+- Người dùng mong muốn bỏ hoàn toàn popup này, các tính năng mặc định luôn sẵn sàng và chạy ngầm trực tiếp.
+
+### Nguyên nhân gốc rễ
+- Trong `AppDelegate.swift`, hàm `applicationDidFinishLaunching` và `applicationShouldHandleReopen` trước đó tự động kích hoạt `showStatusWindow()` mỗi khi Host App được gọi hoặc kích hoạt lại bởi Extension qua URL scheme / open events.
+
+### Giải pháp kỹ thuật
+1. **Loại bỏ toàn bộ logic tự động mở Popup Settings Window**:
+   - Gỡ bỏ hoàn toàn `showStatusWindow()` khỏi `applicationDidFinishLaunching` và `applicationShouldHandleReopen`.
+   - Giữ ứng dụng hoạt động 100% ngầm (`.accessory`), không giao diện, không icon Dock.
+2. **Cơ chế Toggle Hidden Files ổn định và dứt khoát**:
+   - Sử dụng lệnh chuẩn `defaults write com.apple.finder AppleShowAllFiles -bool <true/false> && killall Finder`.
+   - Thực thi tin cậy mà không đòi hỏi quyền Accessibility phức tạp từ phía người dùng, đảm bảo 100% phản ánh đúng trạng thái file ẩn.
+
+### Kết quả kiểm tra
+- [x] Click chọn Toggle Hidden Files không bao giờ hiện cửa sổ Settings nữa.
+- [x] Trạng thái file ẩn chuyển đổi chính xác `0` ↔ `1`.
+- [x] Không phát sinh bất kỳ lỗi crash nào.
+
 
 ### Vấn đề ghi nhận từ User
 - Màn hình người dùng xuất hiện dialog cảnh báo hệ thống: *"FinderMenuTools quit unexpectedly. Click Reopen to open the application again."* khi sử dụng tính năng trên Finder.
