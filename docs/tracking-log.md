@@ -4,6 +4,15 @@ Tài liệu này theo dõi toàn bộ quá trình thiết lập môi trường, 
 
 ---
 
+## [2026-11-08] Làm mới tài liệu công khai và thông tin repository
+
+- [x] Viết lại `README.md` bằng tiếng Anh, bổ sung `README.vi.md` và cập nhật hướng dẫn kiến trúc/cài đặt theo đúng hành vi hiện tại của mã nguồn.
+- [x] Kiểm tra các đường dẫn Markdown nội bộ và `git diff --check`; không chạy build/test vì chỉ thay đổi tài liệu.
+- [x] Cập nhật About description và các topic liên quan trên GitHub cho ba repository `fast-translate`, `vn-pdf-reader`, và `finder-menu-tools`; giữ nguyên tên và trạng thái public.
+- [x] Commit tài liệu: `e7fbaba` (`docs: refresh Finder Menu Tools documentation`), đã push lên `main`.
+
+---
+
 ## [2026-10-20] Giai đoạn 1: Khởi tạo dự án & Thiết lập môi trường AI Agent
 
 ### Mục tiêu
