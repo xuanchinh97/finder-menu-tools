@@ -22,7 +22,9 @@ Finder Menu Tools adds these actions to Finder’s contextual menu:
 
 The menu works on selected items and on the background of a Finder folder. When multiple items in different folders are selected, open actions open each distinct containing folder. New File uses the first resolved folder.
 
-![Finder context menu showing Finder Menu Tools actions](docs/images/finder-context-menu.png)
+<p align="center">
+  <img src="docs/images/finder-context-menu.png" width="440" alt="Finder context menu showing Finder Menu Tools actions">
+</p>
 
 ## Requirements
 
