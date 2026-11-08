@@ -22,6 +22,8 @@ Finder Menu Tools thêm các thao tác sau vào menu chuột phải của Finder
 
 Menu hoạt động khi chọn mục hoặc bấm chuột phải vào vùng trống trong cửa sổ Finder. Nếu chọn nhiều mục nằm ở các thư mục khác nhau, thao tác mở sẽ mở từng thư mục chứa mục đã chọn, không lặp thư mục. Tạo tệp sử dụng thư mục đầu tiên được xác định.
 
+![Menu chuột phải Finder với các thao tác của Finder Menu Tools](docs/images/finder-context-menu.png)
+
 ## Yêu cầu
 
 - macOS 14 trở lên
