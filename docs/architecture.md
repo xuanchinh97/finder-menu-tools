@@ -1,59 +1,48 @@
-# Kiến trúc hệ thống (Architecture)
+# Kiến trúc
 
-## 1. Tổng quan
-`FinderMenuTools` là bộ tiện ích native hoàn chỉnh trên macOS cung cấp các tính năng tương đương và vượt trội Windows Context Menu ngay ở cấp 1 của menu chuột phải trong Finder:
-1. **Copy Path**: Sao chép đường dẫn tuyệt đối (POSIX path) của Folder/File đang chọn.
-2. **Copy Name**: Sao chép tên file/thư mục (kèm extension nếu có).
-3. **Open in Terminal**: Mở nhanh thư mục được chọn trong Terminal mặc định của macOS.
-4. **Open in iTerm2**: Tự động nhận diện và mở trong iTerm2 (chỉ hiển thị nếu máy có cài đặt iTerm2).
-5. **Open in VS Code**: Tự động nhận diện và mở trong Visual Studio Code (chỉ hiển thị nếu máy có cài đặt VS Code).
-6. **New File Here...**: Mở popup nhỏ cho phép nhập tên và tạo file trống (`untitled.txt`, `.md`,...) ngay tại thư mục hiện tại (tương tự `New > Text Document` trên Windows).
-7. **Toggle Hidden Files**: Chuyển đổi trạng thái hiển thị file ẩn `.` trong Finder chỉ với 1 click.
-8. **Settings UI**: Giao diện trực quan trong `FinderMenuTools.app` cho phép người dùng tick bật/tắt từng tính năng theo nhu cầu cá nhân.
+Finder Menu Tools là ứng dụng macOS gồm một app host và một Finder Sync extension nhúng trong app. Extension tạo menu, đọc lựa chọn hoặc thư mục đích trong Finder, rồi xử lý thao tác tại chỗ hoặc chuyển hành động sang app host.
 
-## 2. Thành phần kiến trúc
-
-Hệ thống bao gồm 2 target được đóng gói chung trong một ứng dụng macOS duy nhất:
+## Thành phần
 
 ```mermaid
 flowchart LR
-    subgraph App["FinderMenuTools.app (Host App - Unsandboxed)"]
-        MainUI["AppDelegate / Status Window"]
-        URLHandler["URL Scheme Handler: findermenutools://open"]
-        TerminalLauncher["/usr/bin/open -> iTerm / Terminal"]
-        URLHandler --> TerminalLauncher
-    end
-
-    subgraph Ext["FinderSyncExt.appex (Finder Sync Extension - Sandboxed)"]
-        Sync["FIFinderSyncController"]
-        Menu["Context Menu Builder"]
-        Pasteboard["NSPasteboard (Copy Path)"]
-        URLCaller["NSWorkspace.open(findermenutools://...)"]
-    end
-
-    App -->|Embeds in Contents/PlugIns| Ext
-    Sync --> Menu
-    Menu --> Pasteboard
-    Menu --> URLCaller
-    URLCaller -.->|Custom URL Scheme| URLHandler
+    Finder[Finder window or selection] --> Extension[FinderSyncExt.appex\nFIFinderSync]
+    Extension --> Menu[Context and toolbar menu]
+    Menu --> Pasteboard[NSPasteboard\nCopy Path / Copy Name]
+    Menu --> Dispatch[findermenutools URL + action arguments]
+    Dispatch --> Host[FinderMenuTools.app\nbackground host]
+    Host --> Open[open Terminal / iTerm2 / VS Code]
+    Host --> NewFile[Create empty file]
+    Host --> Hidden[Toggle Finder hidden-file setting\nrestart Finder]
 ```
 
-### 2.1. Host App (`FinderMenuTools`)
-- **Bundle Identifier**: `com.chinh.FinderMenuTools`
-- **Vai trò**: macOS yêu cầu mọi App Extension (`.appex`) phải nằm trong một ứng dụng chứa (Container/Host App). Khi người dùng chạy `FinderMenuTools.app`, ứng dụng kiểm tra trạng thái kích hoạt của `FinderSyncExt` thông qua `FIFinderSyncController.isExtensionEnabled` và cung cấp nút mở nhanh phần cài đặt Extensions của hệ thống (`FIFinderSyncController.showExtensionManagementInterface()`).
+### Finder Sync extension
 
-### 2.2. Finder Sync Extension (`FinderSyncExt`)
-- **Bundle Identifier**: `com.chinh.FinderMenuTools.FinderSyncExt`
-- **Extension Point**: `com.apple.FinderSync`
-- **Phạm vi giám sát**: Đăng ký `directoryURLs = [URL(fileURLWithPath: "/")]` để bắt sự kiện chuột phải trên toàn bộ ổ đĩa hệ thống cũng như các ổ đĩa gắn ngoài (`/Volumes`).
-- **Xử lý đường dẫn**:
-  - Ưu tiên lấy danh sách đối tượng từ `selectedItemURLs()`.
-  - Fallback về `targetedURL()` nếu người dùng click chuột phải vào khoảng trống trong cửa sổ Finder.
+- Source: `FinderSyncExt/FinderSync.swift`.
+- Bundle identifier: `com.chinh.FinderMenuTools.FinderSyncExt`.
+- Extension point: `com.apple.FinderSync`.
+- Registers `/` and `/Volumes` with `FIFinderSyncController`.
+- Builds menus for selected items, folder backgrounds, and the Finder toolbar. It returns no menu for the sidebar.
+- Uses `selectedItemURLs()` when items are selected and falls back to `targetedURL()` for a folder background.
+- Copies POSIX paths and names to the pasteboard. Open actions resolve selected files to their parent directories and deduplicate identical directories.
 
-## 3. Bảo mật, Entitlements & Code Signing
-- **Yêu cầu bắt buộc của `pluginkit` (macOS App Extensions)**: Mọi Finder Sync Extension (`.appex`) bắt buộc phải có `com.apple.security.app-sandbox = true` trong entitlements, nếu không daemon `pkd` của macOS sẽ từ chối đăng ký extension.
-- **Vấn đề Sandbox khi mở ứng dụng với thư mục**: Khi Extension nằm trong Sandbox gọi `NSWorkspace.shared.open([folderURL], withApplicationAt: itermURL)`, hệ thống bảo mật LaunchServices (`CoreServicesUIAgent`) sẽ chặn với lỗi `permErr: permissions error (code -54)` và hiển thị popup *"FinderMenuTools Extension does not have permission to open..."*.
-- **Giải pháp Kiến trúc URL Scheme Delegation**:
-  - `FinderSyncExt.appex` (sandboxed) không trực tiếp gọi mở iTerm2/Terminal bằng thư mục nữa.
-  - Thay vào đó, Extension gọi mở Custom URL Scheme `findermenutools://open?app=iterm&path=...` hoặc `findermenutools://open?app=terminal&path=...`.
-  - Host App `FinderMenuTools.app` (không bị Sandbox) nhận URL qua `application(_:open:)` và thực thi `/usr/bin/open -a iTerm [path]` hoặc `/usr/bin/open -a Terminal [path]` hoàn toàn tự do, không bị popup hay lỗi phân quyền chặn.
+### Host app
+
+- Source: `FinderMenuTools/AppDelegate.swift`.
+- Bundle identifier: `com.chinh.FinderMenuTools`.
+- Runs with accessory activation policy and handles requests from the extension through the `findermenutools` URL scheme and launch arguments.
+- Launches Terminal, iTerm2, or VS Code with `/usr/bin/open`.
+- Shows a native filename dialog for **New File Here…** and creates an empty file only when the destination does not already exist.
+- Toggles `com.apple.finder`’s `AppleShowAllFiles` preference and restarts Finder.
+
+## Extension boundary and signing
+
+The extension is sandboxed and the host app is not. The extension handles Finder selection and menu presentation; it dispatches operations that launch applications or change Finder preferences to the host app. `scripts/install.sh` builds Release, signs the extension and host separately with local ad-hoc signing, registers the extension with `pluginkit`, enables it, and restarts Finder.
+
+## Current scope
+
+- iTerm2 is offered when `/Applications/iTerm.app` exists.
+- VS Code is offered when `/Applications/Visual Studio Code.app` exists.
+- Creating a new file with a name that already exists leaves that existing file untouched.
+- When several destinations are selected for **New File Here…**, only the first resolved directory is used.
+- Toggling hidden files restarts Finder to apply the changed preference.
